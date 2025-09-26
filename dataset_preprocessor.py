@@ -37,7 +37,9 @@ class MinimalCataractPreprocessor:
         """Create necessary output folders"""
         dirs = [
             'processed_data',
-            'processed_data/train', 'processed_data/val', 'processed_data/test'
+            'processed_data/train', 'processed_data/val', 'processed_data/test',
+            'processed_data/slitlamp',
+            'processed_data/slitlamp/train', 'processed_data/slitlamp/val', 'processed_data/slitlamp/test'
         ]
         for dir_path in dirs:
             os.makedirs(dir_path, exist_ok=True)
@@ -310,42 +312,155 @@ class MinimalCataractPreprocessor:
         print("Summary report saved to processed_data/summary_report.json")
 
 
+    def preprocess_slitlamp_images(self, slitlamp_folder):
+        """
+        Process slit-lamp images from organized folders (normal/, mature/, immature/)
+        Args:
+            slitlamp_folder: Path to slit-lamp folder containing category subfolders
+        """
+        categories = ['normal', 'mature', 'immature']
+        processed_data = []
+        
+        print(f"Processing slit-lamp images from: {slitlamp_folder}")
+        
+        for category in categories:
+            category_path = os.path.join(slitlamp_folder, category)
+            
+            if not os.path.exists(category_path):
+                print(f"Warning: Category folder '{category}' not found")
+                continue
+            
+            # Get all image files in category folder
+            image_files = [f for f in os.listdir(category_path) 
+                          if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
+            
+            print(f"Processing {len(image_files)} images in '{category}' category...")
+            
+            for image_file in tqdm(image_files):
+                image_path = os.path.join(category_path, image_file)
+                
+                # Apply preprocessing techniques
+                processed_image = self.preprocess_single_image(image_path)
+                
+                if processed_image is not None:
+                    # Store processed slit-lamp data
+                    processed_data.append({
+                        'filename': image_file,
+                        'category': category,
+                        'processed_image': processed_image
+                    })
+        
+        if not processed_data:
+            print("No slit-lamp images were processed.")
+            return None
+        
+        # Convert to DataFrame
+        processed_df = pd.DataFrame(processed_data)
+        
+        print(f"\nSlit-lamp processing summary:")
+        print(f"Total images processed: {len(processed_df)}")
+        print(f"Category distribution:")
+        print(processed_df['category'].value_counts())
+        
+        return processed_df
+    
+    def split_and_save_slitlamp_data(self, processed_df):
+        """
+        Split slit-lamp data into train/val/test and save
+        Args:
+            processed_df: DataFrame with processed slit-lamp images
+        """
+        if processed_df is None or len(processed_df) == 0:
+            print("No slit-lamp data to split")
+            return
+        
+        # Split data: 70% train, 15% validation, 15% test
+        train_df, temp_df = train_test_split(
+            processed_df, 
+            test_size=0.3,
+            stratify=processed_df['category'],
+            random_state=42
+        )
+        
+        val_df, test_df = train_test_split(
+            temp_df,
+            test_size=0.5,
+            stratify=temp_df['category'], 
+            random_state=42
+        )
+        
+        # Save each split
+        splits = {'train': train_df, 'val': val_df, 'test': test_df}
+        
+        for split_name, split_data in splits.items():
+            # Create category folders
+            for category in split_data['category'].unique():
+                category_dir = os.path.join('processed_data', 'slitlamp', split_name, category)
+                os.makedirs(category_dir, exist_ok=True)
+            
+            # Save images and create metadata
+            metadata_records = []
+            
+            for _, row in split_data.iterrows():
+                save_filename = f"processed_{row['filename']}"
+                save_path = os.path.join('processed_data', 'slitlamp', split_name, row['category'], save_filename)
+                
+                # Convert normalized image back to uint8 format for saving
+                image_to_save = (row['processed_image'] * 255).astype(np.uint8)
+                
+                # Save image
+                cv2.imwrite(save_path, cv2.cvtColor(image_to_save, cv2.COLOR_RGB2BGR))
+                
+                # Record metadata
+                metadata_records.append({
+                    'original_filename': row['filename'],
+                    'saved_filename': save_filename,
+                    'category': row['category'],
+                    'file_path': save_path
+                })
+            
+            # Save metadata CSV
+            metadata_df = pd.DataFrame(metadata_records)
+            metadata_path = f'processed_data/slitlamp_{split_name}_metadata.csv'
+            metadata_df.to_csv(metadata_path, index=False)
+            
+            print(f"SLIT-LAMP {split_name.upper()}: {len(split_data)} images saved")
+        
+        print(f"Slit-lamp data split: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
+
 def main():
     """
     Main function to run the preprocessing pipeline
     """
     print("MINIMAL CATARACT PREPROCESSING")
-    print("Using only: Index + Left/Right Eye + Category")
+    print("Processing: Fundus (from Excel) + Slit-lamp (from folders)")
     print("Techniques: Resize + Noise Removal + Contrast Enhancement + Normalization")
     print("=" * 70)
     
     # Initialize preprocessor
     preprocessor = MinimalCataractPreprocessor(target_size=(224, 224))
     
-    # Set file paths (update these to match your structure)
+    # PROCESS FUNDUS IMAGES
     excel_file = "fundus/metadata.xlsx"
     images_folder = "fundus/Training Images"
     
-    # Check if files exist
-    if not os.path.exists(excel_file):
-        print(f"Excel file not found: {excel_file}")
-        return
+    if os.path.exists(excel_file) and os.path.exists(images_folder):
+        print("\n=== PROCESSING FUNDUS IMAGES ===")
+        preprocessor.load_excel_data(excel_file)
+        processed_fundus = preprocessor.process_all_images(images_folder)
+        preprocessor.split_and_save_data(processed_fundus)
+    else:
+        print("Fundus files not found - skipping fundus processing")
     
-    if not os.path.exists(images_folder):
-        print(f"Images folder not found: {images_folder}")
-        return
+    # PROCESS SLIT-LAMP IMAGES
+    slitlamp_folder = "slit-lamp"
     
-    # Step 1: Load essential data from Excel
-    print("Step 1: Loading Excel data...")
-    preprocessor.load_excel_data(excel_file)
-    
-    # Step 2: Process all images
-    print("\nStep 2: Processing images...")
-    processed_data = preprocessor.process_all_images(images_folder)
-    
-    # Step 3: Split and save data
-    print("\nStep 3: Splitting and saving data...")
-    preprocessor.split_and_save_data(processed_data)
+    if os.path.exists(slitlamp_folder):
+        print("\n=== PROCESSING SLIT-LAMP IMAGES ===")
+        processed_slitlamp = preprocessor.preprocess_slitlamp_images(slitlamp_folder)
+        preprocessor.split_and_save_slitlamp_data(processed_slitlamp)
+    else:
+        print("Slit-lamp folder not found - skipping slit-lamp processing")
     
     print("\nPreprocessing completed successfully!")
     print("Check 'processed_data/' folder for results.")
