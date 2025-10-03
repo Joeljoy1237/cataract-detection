@@ -64,16 +64,14 @@ class CataractPipeline:
             fundus_df = self.preprocessor.process_fundus_images("dataset/fundus/Training Images")
             
             if fundus_df is not None:
-                self.preprocessor.split_and_save(fundus_df, 'fundus')
                 results['fundus'] = len(fundus_df)
         
         # Process slit-lamp
         if os.path.exists("dataset/slit-lamp"):
             print("\n2. Processing Slit-lamp Images")
-            slitlamp_df = self.preprocessor.process_slitlamp_images("slit-lamp")
+            slitlamp_df = self.preprocessor.process_slitlamp_images("dataset/slit-lamp")
             
             if slitlamp_df is not None:
-                self.preprocessor.split_and_save(slitlamp_df, 'slitlamp')
                 results['slitlamp'] = len(slitlamp_df)
         
         return results
@@ -82,23 +80,23 @@ class CataractPipeline:
         """Execute augmentation pipeline"""
         print("\n=== AUGMENTATION PHASE ===")
         
-        # Augment fundus training data
-        fundus_train = 'processed_data/fundus/train'
-        if os.path.exists(fundus_train):
-            print("\n1. Augmenting Fundus Training Data")
+        # Augment fundus data
+        fundus_folder = 'processed_data/fundus'
+        if os.path.exists(fundus_folder):
+            print("\n1. Augmenting Fundus Data")
             self.augmentor.augment_folder(
-                fundus_train, 
-                'augmented_data/fundus/train', 
+                fundus_folder, 
+                'augmented_data/fundus', 
                 'fundus'
             )
         
-        # Augment slit-lamp training data
-        slitlamp_train = 'processed_data/slitlamp/train'
-        if os.path.exists(slitlamp_train):
-            print("\n2. Augmenting Slit-lamp Training Data")
+        # Augment slit-lamp data
+        slitlamp_folder = 'processed_data/slitlamp'
+        if os.path.exists(slitlamp_folder):
+            print("\n2. Augmenting Slit-lamp Data")
             self.augmentor.augment_folder(
-                slitlamp_train, 
-                'augmented_data/slitlamp/train', 
+                slitlamp_folder, 
+                'augmented_data/slitlamp', 
                 'slitlamp'
             )
         
@@ -130,8 +128,19 @@ class CataractPipeline:
             print(f"  {key}: {value} images")
         
         print("\nOutput folders:")
-        print("  📁 processed_data/ - Preprocessed images")
-        print("  📁 augmented_data/ - Augmented training data")
+        print("  📁 processed_data/ - Preprocessed images (organized by labels)")
+        print("  📁 augmented_data/ - Augmented data (organized by labels)")
+        
+        print("\nFolder Structure:")
+        print("  processed_data/fundus/")
+        print("    ├── Normal/")
+        print("    ├── Mild/")
+        print("    ├── Moderate/")
+        print("    └── Severe/")
+        print("  processed_data/slitlamp/")
+        print("    ├── normal/")
+        print("    ├── mature/")
+        print("    └── immature/")
         
         print("\n🎯 Ready for DenseNet-169 model training!")
 

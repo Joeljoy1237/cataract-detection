@@ -7,7 +7,6 @@ import pandas as pd
 import numpy as np
 import cv2
 import os
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import albumentations as A
 
@@ -28,14 +27,10 @@ class CataractPreprocessor:
         self._create_directories()
     
     def _create_directories(self):
-        """Create output directory structure"""
+        """Create output directory structure maintaining input folder structure"""
         dirs = [
-            'processed_data/fundus/train',
-            'processed_data/fundus/val',
-            'processed_data/fundus/test',
-            'processed_data/slitlamp/train',
-            'processed_data/slitlamp/val',
-            'processed_data/slitlamp/test',
+            'processed_data/fundus',
+            'processed_data/slitlamp',
             'processed_data/metadata'
         ]
         for dir_path in dirs:
@@ -151,8 +146,42 @@ class CataractPreprocessor:
             print(f"Error processing {image_path}: {e}")
             return None
     
+    def save_with_folder_structure(self, df, dataset_type='fundus'):
+        """Save processed images with label-based folder structure"""
+        print(f"Saving {len(df)} {dataset_type} images with folder structure...")
+        
+        for _, row in tqdm(df.iterrows(), total=len(df)):
+            # Create label folder
+            label_folder = os.path.join(f'processed_data/{dataset_type}', row['label'])
+            os.makedirs(label_folder, exist_ok=True)
+            
+            # Copy processed image to label folder
+            if os.path.exists(row['filepath']):
+                # Get original filename without path
+                original_filename = os.path.basename(row['filepath'])
+                new_path = os.path.join(label_folder, original_filename)
+                
+                # If file doesn't exist at new location, copy it
+                if not os.path.exists(new_path):
+                    if dataset_type == 'fundus':
+                        # For fundus, copy the processed image
+                        processed_img = cv2.imread(row['filepath'])
+                        cv2.imwrite(new_path, processed_img)
+                    else:
+                        # For slit-lamp, reprocess if needed
+                        original_img_path = row['original_filepath']
+                        processed_img = self.process_slitlamp_image(original_img_path)
+                        if processed_img is not None:
+                            img_to_save = (processed_img * 0.5 + 0.5) * 255
+                            img_to_save = img_to_save.astype(np.uint8)
+                            cv2.imwrite(new_path, img_to_save)
+        
+        print(f"Saved {len(df)} images to label-based folders")
+        
+        return df
+    
     def process_fundus_images(self, images_folder):
-        """Process all fundus images using Excel metadata"""
+        """Process all fundus images using Excel metadata and save them with folder structure"""
         if self.fundus_data is None:
             print("Error: Load Excel data first")
             return None
@@ -169,12 +198,24 @@ class CataractPreprocessor:
                     processed_img = self.process_fundus_image(left_path)
                     
                     if processed_img is not None:
+                        # Save processed image
+                        save_filename = f"{row['ID']}_Left_{row['Left-Fundus']}"
+                        save_path = os.path.join('processed_data/fundus', save_filename)
+                        
+                        # Convert normalized image back for saving
+                        img_to_save = processed_img.copy()
+                        img_to_save = (img_to_save * 0.5 + 0.5) * 255
+                        img_to_save = img_to_save.astype(np.uint8)
+                        cv2.imwrite(save_path, cv2.cvtColor(img_to_save, cv2.COLOR_RGB2BGR))
+                        
                         processed_data.append({
                             'patient_id': row['ID'],
                             'eye': 'Left',
-                            'filename': row['Left-Fundus'],
+                            'original_filename': row['Left-Fundus'],
+                            'processed_filename': save_filename,
                             'label': label,
-                            'processed_image': processed_img
+                            'filepath': save_path,
+                            'original_filepath': left_path
                         })
             
             # Process right eye
@@ -185,24 +226,44 @@ class CataractPreprocessor:
                     processed_img = self.process_fundus_image(right_path)
                     
                     if processed_img is not None:
+                        # Save processed image
+                        save_filename = f"{row['ID']}_Right_{row['Right-Fundus']}"
+                        save_path = os.path.join('processed_data/fundus', save_filename)
+                        
+                        # Convert normalized image back for saving
+                        img_to_save = processed_img.copy()
+                        img_to_save = (img_to_save * 0.5 + 0.5) * 255
+                        img_to_save = img_to_save.astype(np.uint8)
+                        cv2.imwrite(save_path, cv2.cvtColor(img_to_save, cv2.COLOR_RGB2BGR))
+                        
                         processed_data.append({
                             'patient_id': row['ID'],
                             'eye': 'Right',
-                            'filename': row['Right-Fundus'],
+                            'original_filename': row['Right-Fundus'],
+                            'processed_filename': save_filename,
                             'label': label,
-                            'processed_image': processed_img
+                            'filepath': save_path,
+                            'original_filepath': right_path
                         })
         
         processed_df = pd.DataFrame(processed_data)
         
+        # Save with folder structure
+        self.save_with_folder_structure(processed_df, 'fundus')
+        
+        # Save metadata
+        metadata_path = 'processed_data/metadata/fundus_metadata.csv'
+        processed_df.to_csv(metadata_path, index=False)
+        
         print(f"\nFundus processing completed:")
         print(f"Total: {len(processed_df)}")
         print(f"Distribution:\n{processed_df['label'].value_counts()}")
+        print(f"Metadata saved to: {metadata_path}")
         
         return processed_df
     
     def process_slitlamp_images(self, slitlamp_folder):
-        """Process slit-lamp images from organized folders"""
+        """Process slit-lamp images from organized folders and save with folder structure"""
         categories = ['normal', 'mature', 'immature']
         processed_data = []
         
@@ -225,78 +286,36 @@ class CataractPreprocessor:
                 processed_img = self.process_slitlamp_image(image_path)
                 
                 if processed_img is not None:
+                    # Save processed image
+                    save_filename = f"processed_{image_file}"
+                    save_path = os.path.join('processed_data/slitlamp', save_filename)
+                    
+                    # Convert normalized image back for saving
+                    img_to_save = processed_img.copy()
+                    img_to_save = (img_to_save * 0.5 + 0.5) * 255
+                    img_to_save = img_to_save.astype(np.uint8)
+                    cv2.imwrite(save_path, img_to_save)
+                    
                     processed_data.append({
-                        'filename': image_file,
+                        'original_filename': image_file,
+                        'processed_filename': save_filename,
                         'label': category,
-                        'processed_image': processed_img
+                        'filepath': save_path,
+                        'original_filepath': image_path
                     })
         
         processed_df = pd.DataFrame(processed_data)
         
+        # Save with folder structure
+        self.save_with_folder_structure(processed_df, 'slitlamp')
+        
+        # Save metadata
+        metadata_path = 'processed_data/metadata/slitlamp_metadata.csv'
+        processed_df.to_csv(metadata_path, index=False)
+        
         print(f"\nSlit-lamp processing completed:")
         print(f"Total: {len(processed_df)}")
         print(f"Distribution:\n{processed_df['label'].value_counts()}")
+        print(f"Metadata saved to: {metadata_path}")
         
         return processed_df
-    
-    def split_and_save(self, processed_df, data_type='fundus'):
-        """Split data into train/val/test and save"""
-        if processed_df is None or len(processed_df) == 0:
-            print(f"No {data_type} data to split")
-            return
-        
-        # Stratified split
-        train_df, temp_df = train_test_split(
-            processed_df, test_size=0.3, 
-            stratify=processed_df['label'], random_state=42
-        )
-        val_df, test_df = train_test_split(
-            temp_df, test_size=0.5,
-            stratify=temp_df['label'], random_state=42
-        )
-        
-        splits = {'train': train_df, 'val': val_df, 'test': test_df}
-        
-        for split_name, split_data in splits.items():
-            for label in split_data['label'].unique():
-                label_dir = os.path.join('processed_data', data_type, split_name, label)
-                os.makedirs(label_dir, exist_ok=True)
-            
-            metadata_records = []
-            for _, row in split_data.iterrows():
-                if data_type == 'fundus':
-                    save_filename = f"{row['patient_id']}_{row['eye']}_{row['filename']}"
-                else:
-                    save_filename = f"processed_{row['filename']}"
-                
-                save_path = os.path.join('processed_data', data_type, split_name, 
-                                        row['label'], save_filename)
-                
-                # Convert normalized image back for saving
-                # Denormalize: x = x * std + mean
-                img_to_save = row['processed_image'].copy()
-                
-                if data_type == 'fundus':
-                    # Denormalize from [-1,1] to [0,255]
-                    img_to_save = (img_to_save * 0.5 + 0.5) * 255
-                    img_to_save = img_to_save.astype(np.uint8)
-                    cv2.imwrite(save_path, cv2.cvtColor(img_to_save, cv2.COLOR_RGB2BGR))
-                else:
-                    # Slit-lamp is grayscale, single channel
-                    img_to_save = (img_to_save * 0.5 + 0.5) * 255
-                    img_to_save = img_to_save.astype(np.uint8)
-                    cv2.imwrite(save_path, img_to_save)
-                
-                metadata_records.append({
-                    'filename': save_filename,
-                    'label': row['label'],
-                    'filepath': save_path
-                })
-            
-            metadata_df = pd.DataFrame(metadata_records)
-            metadata_path = f'processed_data/metadata/{data_type}_{split_name}_metadata.csv'
-            metadata_df.to_csv(metadata_path, index=False)
-            
-            print(f"{data_type.upper()} {split_name}: {len(split_data)} images")
-        
-        print(f"Split: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
