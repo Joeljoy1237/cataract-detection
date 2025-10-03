@@ -70,11 +70,11 @@ class CataractPipeline:
         # Process slit-lamp
         if os.path.exists("dataset/slit-lamp"):
             print("\n2. Processing Slit-lamp Images")
-            slitlamp_df = self.preprocessor.process_slitlamp_images("slit-lamp")
+            slitlamp_df = self.preprocessor.process_slitlamp_images("dataset/slit-lamp")
             
             if slitlamp_df is not None:
-                self.preprocessor.split_and_save(slitlamp_df, 'slitlamp')
-                results['slitlamp'] = len(slitlamp_df)
+                self.preprocessor.split_and_save(slitlamp_df, 'dataset/slitlamp')
+                results['dataset/slitlamp'] = len(slitlamp_df)
         
         return results
     
