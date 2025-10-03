@@ -68,7 +68,7 @@ class CataractPipeline:
                 results['fundus'] = len(fundus_df)
         
         # Process slit-lamp
-        if os.path.exists("slit-lamp"):
+        if os.path.exists("dataset/slit-lamp"):
             print("\n2. Processing Slit-lamp Images")
             slitlamp_df = self.preprocessor.process_slitlamp_images("slit-lamp")
             
