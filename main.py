@@ -58,10 +58,10 @@ class CataractPipeline:
         results = {}
         
         # Process fundus
-        if os.path.exists("fundus/metadata.xlsx"):
+        if os.path.exists("dataset/fundus/metadata.xlsx"):
             print("\n1. Processing Fundus Images")
-            self.preprocessor.load_fundus_metadata("fundus/metadata.xlsx")
-            fundus_df = self.preprocessor.process_fundus_images("fundus/Training Images")
+            self.preprocessor.load_fundus_metadata("dataset/fundus/metadata.xlsx")
+            fundus_df = self.preprocessor.process_fundus_images("dataset/fundus/Training Images")
             
             if fundus_df is not None:
                 self.preprocessor.split_and_save(fundus_df, 'fundus')
