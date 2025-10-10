@@ -75,24 +75,31 @@ class CataractAugmentation:
                 if image is None:
                     continue
 
-                if len(image.shape) == 3:  # RGB
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # Convert BGR to RGB for color images only
+                if len(image.shape) == 3:  # Color image (BGR)
+                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                else:  # Grayscale image
+                    image_rgb = image
 
                 # Save original only if flag is set
                 if self.save_original:
                     orig_output = os.path.join(output_cat, f"orig_{img_file}")
-                    cv2.imwrite(orig_output, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+                    if len(image_rgb.shape) == 3:  # Color image
+                        cv2.imwrite(orig_output, cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
+                    else:  # Grayscale image
+                        cv2.imwrite(orig_output, image_rgb)
 
                 # Create augmented versions
                 for i in range(self.augmentation_factor):
-                    augmented = self.augment_image(image, image_type)
+                    augmented = self.augment_image(image_rgb, image_type)
                     aug_filename = f"aug_{i}_{img_file}"
                     aug_output = os.path.join(output_cat, aug_filename)
 
-                    if len(augmented.shape) == 2:
-                        cv2.imwrite(aug_output, augmented)
-                    else:
+                    # Save based on image type
+                    if len(augmented.shape) == 3:  # Color image
                         cv2.imwrite(aug_output, cv2.cvtColor(augmented, cv2.COLOR_RGB2BGR))
+                    else:  # Grayscale image
+                        cv2.imwrite(aug_output, augmented)
 
             print(f"  Created {len(image_files) * self.augmentation_factor} augmented images")
 
